@@ -39,7 +39,7 @@ namespace ShlinkDotnet.Web
             var options = new RestClientOptions(baseUrl)
             {
                 //ThrowOnAnyError = true,
-                MaxTimeout = 1000,
+                MaxTimeout = 5000,
                 
             };
             var client = new RestClient(options)
@@ -100,8 +100,30 @@ namespace ShlinkDotnet.Web
 
         public async Task<ShortUrlDto> CreateShortLinkAsync(BaseShortUrlRequest request, CancellationToken cancellationToken = default)
         {
+            
+            //if (request is CreateShortUrlWithSlugRequest createSlugRequest)
+            //{
+            //    // Check if custom slug is already in use
+            //    var rRe = new RestRequest($"rest/v3/short-urls/{createSlugRequest.ShortCode}", Method.Get);
+            //    var rRe_res = await _restClient.ExecuteAsync(rRe);
+            //    if (rRe_res.StatusCode == HttpStatusCode.OK) 
+            //    {
+            //        // It is existing, so we need to update it
+            //        return await UpdateShortLinkAsync(createSlugRequest.ShortCode, request);
+            //    }
+            //}
+            
+
+
             var restRequest = new RestRequest("rest/v3/short-urls", Method.Post)
                 .AddJsonBody(request);
+#if DEBUG
+            restRequest.OnBeforeRequest = async (httpRequest) =>
+            {
+                var requestBodyStr = await httpRequest.Content.ReadAsStringAsync();
+                System.Diagnostics.Trace.WriteLine($"Request body: {requestBodyStr}");
+            };
+#endif
 
             var res = await _restClient.ExecuteAsync<ShortUrlDto>(restRequest);
             if (res.StatusCode == HttpStatusCode.OK)
@@ -110,13 +132,22 @@ namespace ShlinkDotnet.Web
             }
 
             var content = JsonConvert.DeserializeObject<BadRequestDto>(res.Content);
-            var headers = res.Headers.ToDictionary(h => h.Name, h => h.Value.ToString());
+            var headers = res.Headers.ToDictionary(h => h.Name, h => h.Value?.ToString());
             throw new ApiException<BadRequestDto>("Failed to create short link", res.StatusCode, res.StatusDescription, headers, content, null);
         }
 
         public async Task<ShortUrlDto> UpdateShortLinkAsync(string shortCode, BaseShortUrlRequest request, CancellationToken cancellationToken = default)
         {
-            var restRequest = new RestRequest($"rest/v3/short-urls/{shortCode}", Method.Patch)
+            string qstr = string.Empty;
+            if (request is CreateShortUrlWithSlugRequest createShortUrlWithSlugRequest)
+            {
+                if (!string.IsNullOrEmpty(createShortUrlWithSlugRequest.Domain))
+                {
+                    qstr = $"?domain={createShortUrlWithSlugRequest.Domain}";
+                }
+            }
+            
+            var restRequest = new RestRequest($"rest/v3/short-urls/{shortCode}{qstr}", Method.Patch)
                 .AddJsonBody(request);
 
             var res = await _restClient.ExecuteAsync<ShortUrlDto>(restRequest);
